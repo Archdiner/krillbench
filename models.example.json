@@ -1,0 +1,43 @@
+[
+ {"name": "gpt-flagship", "backend": "azure",
+  "endpoint": "https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions",
+  "deployment": "YOUR-GPT-DEPLOYMENT-NAME", "key_env": "AZURE_API_KEY", "released": "2026-10-26",
+  "levels": {"off": {"reasoning_effort": "none"}, "low": {"reasoning_effort": "low"},
+             "medium": {"reasoning_effort": "medium"}, "high": {"reasoning_effort": "high"}}},
+
+ {"name": "gpt-small", "backend": "azure",
+  "endpoint": "https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions",
+  "deployment": "YOUR-SMALL-GPT-DEPLOYMENT", "key_env": "AZURE_API_KEY",
+  "levels": {"off": {"reasoning_effort": "none"}, "low": {"reasoning_effort": "low"},
+             "medium": {"reasoning_effort": "medium"}, "high": {"reasoning_effort": "high"}}},
+
+ {"name": "grok", "backend": "azure",
+  "endpoint": "https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/chat/completions",
+  "deployment": "YOUR-GROK-DEPLOYMENT", "key_env": "AZURE_API_KEY",
+  "levels": {"medium": {}}},
+
+ {"name": "deepseek", "backend": "azure",
+  "endpoint": "https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/chat/completions",
+  "deployment": "YOUR-DEEPSEEK-DEPLOYMENT", "key_env": "AZURE_API_KEY",
+  "levels": {"off": {}}},
+
+ {"name": "kimi", "backend": "azure",
+  "endpoint": "https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/chat/completions",
+  "deployment": "YOUR-KIMI-DEPLOYMENT", "key_env": "AZURE_API_KEY",
+  "levels": {"medium": {}}},
+
+ {"name": "claude-opus", "backend": "claude_code", "model": "opus", "workers": 2, "released": "2026-09-22",
+  "levels": {"off": {"MAX_THINKING_TOKENS": 0}, "low": {"MAX_THINKING_TOKENS": 2000},
+             "medium": {"MAX_THINKING_TOKENS": 8000}, "high": {"MAX_THINKING_TOKENS": 32000}}},
+
+ {"name": "claude-sonnet", "backend": "claude_code", "model": "sonnet", "workers": 2, "released": "2026-09-28",
+  "levels": {"off": {"MAX_THINKING_TOKENS": 0}, "low": {"MAX_THINKING_TOKENS": 2000},
+             "medium": {"MAX_THINKING_TOKENS": 8000}, "high": {"MAX_THINKING_TOKENS": 32000}}},
+
+ {"name": "claude-haiku", "backend": "claude_code", "model": "haiku", "workers": 2, "released": "2026-10-07",
+  "levels": {"off": {"MAX_THINKING_TOKENS": 0}, "low": {"MAX_THINKING_TOKENS": 2000},
+             "medium": {"MAX_THINKING_TOKENS": 8000}, "high": {"MAX_THINKING_TOKENS": 32000}}},
+
+ {"name": "gemini-flash", "backend": "gemini", "model": "YOUR-FREE-TIER-FLASH-MODEL-ID", "key_env": "GEMINI_API_KEY", "workers": 1,
+  "levels": {"low": {"thinkingConfig": {"thinkingLevel": "low"}}, "high": {"thinkingConfig": {"thinkingLevel": "high"}}}}
+]
