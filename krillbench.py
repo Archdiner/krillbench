@@ -286,6 +286,25 @@ def call_with_retry(m, system, p, level, level_cfg, mock):
     return None, attempts, last
 
 
+def network_overhead(m, n=5):
+    """Median round trip of a request the endpoint rejects before any model work (bad key):
+    connection + TLS + frontdoor. Subtracted from wall latency to estimate processing time."""
+    if not m.get("endpoint"):
+        return None
+    ts = []
+    for _ in range(n):
+        req = urllib.request.Request(m["endpoint"], data=b"{}", headers={"api-key": "x", "Content-Type": "application/json"})
+        t0 = time.time()
+        try:
+            urllib.request.urlopen(req, timeout=30).read()
+        except urllib.error.HTTPError:
+            pass
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            continue
+        ts.append(time.time() - t0)
+    return sorted(ts)[len(ts) // 2] if ts else None
+
+
 class Budget:
     def __init__(self, cap):
         self.cap, self.spent, self.lock = cap, 0.0, threading.Lock()
@@ -309,6 +328,9 @@ def cmd_run(a):
     budget, stop = Budget(a.max_usd), threading.Event()
     Path(a.out).mkdir(exist_ok=True)
     for m in models:
+        net = None if a.mock else network_overhead(m)
+        if net is not None:
+            print(f"{m['name']}: network overhead {net:.3f}s (subtracted for processing time)")
         for cond in plan:
             system, level, samples, filt = CONDITIONS[cond]
             if a.samples is not None:
@@ -349,13 +371,13 @@ def cmd_run(a):
                 except ContentFiltered as e:
                     res, attempts, err = None, 1, f"filtered {e}"
                 rec = {"model": m["name"], "condition": cond, "level": level, "prompt_id": p["id"],
-                       "sample": s, "attempts": attempts, "ts": time.time()}
+                       "sample": s, "attempts": attempts, "ts": time.time(), "net_s": net}
                 if err and err.startswith("filtered"):
                     rec.update(status="filtered", error=err)
                 elif res is None:
                     rec.update(status="infra_failed", error=err)
                 else:
-                    budget.add(res.get("cost"))
+                    budget.add(res["cost"] if res.get("cost") is not None else list_price_cost(m.get("price"), res))
                     rec.update(status="ok", raw=res["text"], answer=clean_answer(res["text"]),
                                **{k: v for k, v in res.items() if k != "text"})
                 with lock, open(f, "a") as fh:
@@ -397,6 +419,7 @@ def cmd_score(a):
                     failed += 1     # infra failures are excluded, never scored as 0 (see README)
                     continue
                 pid = r["prompt_id"]
+                proc = max(0.0, (r.get("latency_s") or 0) - (r.get("net_s") or 0))
                 sh = sheets.setdefault(pid, Sheet(prompts[pid]["raw"]))
                 tier, kind = sh.lookup(r["answer"])
                 pts = TIER_PTS[tier] if tier else 0
@@ -408,8 +431,8 @@ def cmd_score(a):
                     "model": r["model"], "condition": r["condition"], "level": r["level"], "prompt_id": pid,
                     "date": prompts[pid]["date"], "sample": r["sample"], "answer": r["answer"],
                     "key": norm(r["answer"]), "tier": tier, "match": kind, "points": pts,
-                    "points_timed": 0 if (r.get("latency_s") or 0) > CLOCK_S else pts,
-                    "noillirk": crowd, "latency_s": r.get("latency_s"), "attempts": r["attempts"],
+                    "points_timed": 0 if proc > CLOCK_S else pts,
+                    "noillirk": crowd, "latency_s": r.get("latency_s"), "proc_s": proc, "attempts": r["attempts"],
                     "reasoning_tok": r.get("reasoning_tok"), "out_tok": r.get("out_tok"),
                     "cost": r["cost"] if r.get("cost") is not None else list_price_cost(prices.get(r["model"]), r),
                     "notional": bool(r.get("cost_is_notional"))}) + "\n")
@@ -437,7 +460,8 @@ def cmd_report(a):
     prompts = {p["id"]: p for p in load_prompts(a.data)}
     L = ["# KrillBench results", "",
          "Dive Score = mean points per prompt x 7 (0-700), sample 0, 95% bootstrap CI over prompts.",
-         "Timed = answers over 25 s score 0. Reference: crowd's #1 answer 163, random valid answer 529."]
+         "Timed = same answers, but any whose processing time (wall time minus measured network overhead) "
+         "exceeds 25 s scores 0. Nothing is cut off. Reference: crowd's #1 answer 163, random valid answer 529."]
     blocked = filtered_prompts(a.out)
     if blocked:
         L.append(f"Dropped for all models (blocked by a provider content filter): {', '.join(sorted(blocked))}.")
@@ -452,15 +476,17 @@ def cmd_report(a):
         pts = [r["points"] for r in s0]
         lo, hi = boot_ci(pts)
         valid = [r for r in s0 if r["tier"]]
-        lat = sorted(r["latency_s"] or 0 for r in s0)
+        lat = sorted(r.get("proc_s", r["latency_s"]) or 0 for r in s0)
         return {"n": len(s0), "dive": 7 * st.mean(pts), "lo": 7 * lo, "hi": 7 * hi,
                 "timed": 7 * st.mean(r["points_timed"] for r in s0),
+                "tci": [7 * x for x in boot_ci([r["points_timed"] for r in s0])],
                 "exact": 7 * st.mean(0 if r["match"] == "fuzzy" else r["points"] for r in s0),
                 "valid": len(valid) / len(s0),
                 "ppv": st.mean(r["points"] for r in valid) if valid else 0,
                 "head": sum(r["tier"] in ("plankton", "schooler") for r in valid) / max(1, len(valid)),
                 "gem": sum(r["tier"] == "gem" for r in s0) / len(s0),
-                "p50": lat[len(lat) // 2], "usd": None if any(r["cost"] is None for r in s0) else 7 * sum(r["cost"] for r in s0) / len(s0),
+                "p50": lat[len(lat) // 2], "p90": lat[int(0.9 * (len(lat) - 1))],
+                "over": sum(x > CLOCK_S for x in lat) / len(lat), "usd": None if any(r["cost"] is None for r in s0) else 7 * sum(r["cost"] for r in s0) / len(s0),
                 "notional": any(r["notional"] for r in s0),
                 "rtok": st.mean(r["reasoning_tok"] for r in s0 if r["reasoning_tok"] is not None)
                 if any(r["reasoning_tok"] is not None for r in s0) else None}
@@ -468,16 +494,22 @@ def cmd_report(a):
     head = [(m, summary(rs)) for (m, c), rs in g.items() if c == "rules-off"]
     head.sort(key=lambda x: -x[1]["dive"])
     L += ["## Leaderboard (rules, reasoning off)", "",
-          "| Model | n | Dive Score [95% CI] | Timed | Exact-only | Valid | Pts if valid | Head rate | Gems | p50 s | $/dive |",
-          "|---|---|---|---|---|---|---|---|---|---|---|"]
+          "| Model | n | Dive Score [95% CI] | Timed | Exact-only | Valid | Pts if valid | Head rate | Gems | proc p50 / p90 s | over 25 s | $/dive |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for m, s in head:
         usd = "n/a" if s["usd"] is None else f"${s['usd']:.3f}" + ("*" if s["notional"] else "")
         lv = g[(m, "rules-off")][0]["level"]
         label = m if lv == "off" else f"{m} (at {lv})"
         L.append(f"| {label} | {s['n']} | {s['dive']:.0f} [{s['lo']:.0f}, {s['hi']:.0f}] | {s['timed']:.0f} | "
                  f"{s['exact']:.0f} | {100*s['valid']:.0f}% | {s['ppv']:.0f} | {100*s['head']:.0f}% | "
-                 f"{100*s['gem']:.1f}% | {s['p50']:.1f} | {usd} |")
+                 f"{100*s['gem']:.1f}% | {s['p50']:.1f} / {s['p90']:.1f} | {100*s['over']:.0f}% | {usd} |")
     L.append("\n\\* Claude Code cost is the API-equivalent figure it reports; your subscription is what you pay.")
+    L += ["", "## Leaderboard, timed (25 s clock on processing time)", "",
+          "| Model | Timed Dive [95% CI] | Untimed | Lost to clock | over 25 s | proc p50 / p90 s |", "|---|---|---|---|---|---|"]
+    for m, s in sorted(head, key=lambda x: -x[1]["timed"]):
+        lv = g[(m, "rules-off")][0]["level"]
+        L.append(f"| {m if lv == 'off' else f'{m} (at {lv})'} | {s['timed']:.0f} [{s['tci'][0]:.0f}, {s['tci'][1]:.0f}] | "
+                 f"{s['dive']:.0f} | {s['dive'] - s['timed']:.0f} | {100*s['over']:.0f}% | {s['p50']:.1f} / {s['p90']:.1f} |")
     L.append("\"(at X)\": the model can't turn reasoning off, so its headline runs at its lowest supported level X.")
 
     # ---- paired gaps between neighbours

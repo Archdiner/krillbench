@@ -8,3 +8,5 @@ models.*.json
 scored.jsonl
 report.md
 leaderboard.csv
+runs-*/
+logs/
