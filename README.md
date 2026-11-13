@@ -36,7 +36,8 @@ Test without any keys: `python3 krillbench.py run --mock --models <file with {"n
 | naive-off | "Answer the prompt", no scoring rules | off | 1 |
 | noillirk-off (optional) | "Most common answer" | off | 1 (112 prompts) |
 
-Calls per model: 2,450 (2,562 with Noillirk). The model is asked for its answer only, nothing else.
+Calls per model: 2,450 (2,562 with Noillirk). Models that can't turn reasoning off run every "off" condition at
+their lowest supported level, marked "(at low)" on the leaderboard; their duplicate rules-low run is skipped. The model is asked for its answer only, nothing else.
 
 **One call = one fresh context.** No conversation history, no tools, no web. Samples are independent
 calls, not retries.

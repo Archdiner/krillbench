@@ -42,6 +42,11 @@ CONDITIONS = {
 }
 DEFAULT_PLAN = ["rules-off", "rules-low", "rules-medium", "rules-high", "naive-off"]
 
+
+def headline_level(m):
+    """The "off" conditions run at the model's lowest configured level (models that can't disable reasoning)."""
+    return next((lv for lv in LEVELS if lv in m.get("levels", {})), "off")
+
 # ------------------------------------------------------------------ data
 
 def norm(s):
@@ -299,6 +304,12 @@ def cmd_run(a):
             if a.samples is not None:
                 samples = a.samples if cond == "rules-off" else 1
             levels = m.get("levels", {})
+            floor = headline_level(m)
+            if level == "off":
+                level = floor
+            elif cond.startswith("rules-") and level == floor:
+                print(f"skip {m['name']} / {cond}: same config as its rules-off headline")
+                continue
             if not a.mock and level not in levels:
                 print(f"skip {m['name']} / {cond}: model has no '{level}' level configured")
                 continue
@@ -422,10 +433,13 @@ def cmd_report(a):
           "|---|---|---|---|---|---|---|---|---|---|---|"]
     for m, s in head:
         usd = f"${s['usd']:.3f}" + ("*" if s["notional"] else "")
-        L.append(f"| {m} | {s['n']} | {s['dive']:.0f} [{s['lo']:.0f}, {s['hi']:.0f}] | {s['timed']:.0f} | "
+        lv = g[(m, "rules-off")][0]["level"]
+        label = m if lv == "off" else f"{m} (at {lv})"
+        L.append(f"| {label} | {s['n']} | {s['dive']:.0f} [{s['lo']:.0f}, {s['hi']:.0f}] | {s['timed']:.0f} | "
                  f"{s['exact']:.0f} | {100*s['valid']:.0f}% | {s['ppv']:.0f} | {100*s['head']:.0f}% | "
                  f"{100*s['gem']:.1f}% | {s['p50']:.1f} | {usd} |")
     L.append("\n\\* Claude Code cost is the API-equivalent figure it reports; your subscription is what you pay.")
+    L.append("\"(at X)\": the model can't turn reasoning off, so its headline runs at its lowest supported level X.")
 
     # ---- paired gaps between neighbours
     by = {m: {r["prompt_id"]: r["points"] for r in g[(m, "rules-off")] if r["sample"] == 0} for m, _ in head}
@@ -443,8 +457,10 @@ def cmd_report(a):
           "|---|---|---|---|---|---|---|"]
     for m in sorted({k[0] for k in g}):
         cells, toks, timed = [], [], []
+        off = g.get((m, "rules-off"))
+        off_lv = off[0]["level"] if off else "off"
         for lv in LEVELS:
-            rs = g.get((m, f"rules-{lv}"))
+            rs = off if lv == off_lv else None if lv == "off" else g.get((m, f"rules-{lv}"))
             if rs:
                 s = summary(rs)
                 cells.append(f"{s['dive']:.0f} [{s['lo']:.0f}, {s['hi']:.0f}]")
