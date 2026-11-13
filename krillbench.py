@@ -373,8 +373,18 @@ def cmd_run(a):
 # ------------------------------------------------------------------ score
 
 
+def list_price_cost(price, r):
+    """USD from token counts x list price (per 1M tokens), for providers that don't report cost.
+    Some providers (grok) report reasoning tokens outside completion_tokens; both bill as output."""
+    if not price or r.get("in_tok") is None or r.get("out_tok") is None:
+        return None
+    out = r["out_tok"] + ((r.get("reasoning_tok") or 0) if price.get("reasoning_separate") else 0)
+    return (r["in_tok"] * price["in"] + out * price["out"]) / 1e6
+
+
 def cmd_score(a):
     prompts = {p["id"]: p for p in load_prompts(a.data)}
+    prices = {m["name"]: m.get("price") for m in json.load(open(a.models))} if Path(a.models).exists() else {}
     sheets, n, failed = {}, 0, 0
     blocked = filtered_prompts(a.out)
     with open(a.scored, "w") as out:
@@ -401,7 +411,8 @@ def cmd_score(a):
                     "points_timed": 0 if (r.get("latency_s") or 0) > CLOCK_S else pts,
                     "noillirk": crowd, "latency_s": r.get("latency_s"), "attempts": r["attempts"],
                     "reasoning_tok": r.get("reasoning_tok"), "out_tok": r.get("out_tok"),
-                    "cost": r.get("cost") or 0.0, "notional": bool(r.get("cost_is_notional"))}) + "\n")
+                    "cost": r["cost"] if r.get("cost") is not None else list_price_cost(prices.get(r["model"]), r),
+                    "notional": bool(r.get("cost_is_notional"))}) + "\n")
                 n += 1
     print(f"Scored {n} answers -> {a.scored}  ({failed} infra failures excluded, "
           f"{len(blocked)} content-filtered prompts dropped for all models)")
@@ -449,7 +460,7 @@ def cmd_report(a):
                 "ppv": st.mean(r["points"] for r in valid) if valid else 0,
                 "head": sum(r["tier"] in ("plankton", "schooler") for r in valid) / max(1, len(valid)),
                 "gem": sum(r["tier"] == "gem" for r in s0) / len(s0),
-                "p50": lat[len(lat) // 2], "usd": 7 * sum(r["cost"] for r in s0) / len(s0),
+                "p50": lat[len(lat) // 2], "usd": None if any(r["cost"] is None for r in s0) else 7 * sum(r["cost"] for r in s0) / len(s0),
                 "notional": any(r["notional"] for r in s0),
                 "rtok": st.mean(r["reasoning_tok"] for r in s0 if r["reasoning_tok"] is not None)
                 if any(r["reasoning_tok"] is not None for r in s0) else None}
@@ -460,7 +471,7 @@ def cmd_report(a):
           "| Model | n | Dive Score [95% CI] | Timed | Exact-only | Valid | Pts if valid | Head rate | Gems | p50 s | $/dive |",
           "|---|---|---|---|---|---|---|---|---|---|---|"]
     for m, s in head:
-        usd = f"${s['usd']:.3f}" + ("*" if s["notional"] else "")
+        usd = "n/a" if s["usd"] is None else f"${s['usd']:.3f}" + ("*" if s["notional"] else "")
         lv = g[(m, "rules-off")][0]["level"]
         label = m if lv == "off" else f"{m} (at {lv})"
         L.append(f"| {label} | {s['n']} | {s['dive']:.0f} [{s['lo']:.0f}, {s['hi']:.0f}] | {s['timed']:.0f} | "
@@ -539,7 +550,8 @@ def cmd_report(a):
                 L.append(f"| {m} | {len(v)} | {st.mean(v):.1f} |")
     att = [r["attempts"] for r in rows]
     L += ["", f"Answers scored: {len(rows)}. Calls needing a retry: {sum(x > 1 for x in att)}. "
-          f"Total spend (real): ${sum(r['cost'] for r in rows if not r['notional']):.2f}."]
+          f"Total spend (real, list price; n/a models excluded): "
+          f"${sum(r['cost'] or 0 for r in rows if not r['notional']):.2f}."]
     Path(a.md).write_text("\n".join(L) + "\n")
     with open(a.csv, "w", newline="") as fh:
         w = csv.writer(fh)
@@ -547,7 +559,7 @@ def cmd_report(a):
         for m, s in head:
             w.writerow([m, s["n"], round(s["dive"], 1), round(s["lo"], 1), round(s["hi"], 1), round(s["timed"], 1),
                         round(s["exact"], 1), round(s["valid"], 3), round(s["ppv"], 1), round(s["head"], 3),
-                        round(s["gem"], 4), round(s["p50"], 2), round(s["usd"], 4)])
+                        round(s["gem"], 4), round(s["p50"], 2), None if s["usd"] is None else round(s["usd"], 4)])
     print("\n".join(L))
 
 
@@ -651,6 +663,7 @@ def main():
     r.add_argument("--max-usd", type=float, default=50.0, help="hard cap on real spend this invocation")
     r.add_argument("--mock", action="store_true")
     s = sp.add_parser("score"); s.add_argument("--scored", default="scored.jsonl")
+    s.add_argument("--models", default="models.json", help="for list prices (cost when the provider reports none)")
     rp = sp.add_parser("report"); rp.add_argument("--scored", default="scored.jsonl")
     rp.add_argument("--md", default="report.md"); rp.add_argument("--csv", default="leaderboard.csv")
     rp.add_argument("--models", default="models.json")
