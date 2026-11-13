@@ -16,7 +16,7 @@ from pathlib import Path
 
 TIER_PTS = {"plankton": 10, "too_clever": 15, "schooler": 30, "rare": 60, "deep_cut": 85, "gem": 100}
 CLOCK_S = 25.0
-LEVELS = ["off", "low", "medium", "high"]
+LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"]
 
 # ------------------------------------------------------------------ conditions
 RULES = """You are playing Krillion, a daily trivia game. Name ONE answer to the prompt.
@@ -34,13 +34,15 @@ Reply with only your answer: no explanation, no punctuation, no quotes."""
 # condition name -> (system prompt, reasoning level, default samples, prompt filter)
 CONDITIONS = {
     "rules-off": (RULES, "off", 3, None),
+    "rules-minimal": (RULES, "minimal", 1, None),
     "rules-low": (RULES, "low", 1, None),
     "rules-medium": (RULES, "medium", 1, None),
     "rules-high": (RULES, "high", 1, None),
+    "rules-xhigh": (RULES, "xhigh", 1, None),
     "naive-off": (NAIVE, "off", 1, None),
     "noillirk-off": (NOILLIRK, "off", 1, "crowd"),   # optional, 112 prompts with player data
 }
-DEFAULT_PLAN = ["rules-off", "rules-low", "rules-medium", "rules-high", "naive-off"]
+DEFAULT_PLAN = ["rules-off", "rules-minimal", "rules-low", "rules-medium", "rules-high", "rules-xhigh", "naive-off"]
 
 
 def headline_level(m):
@@ -138,6 +140,10 @@ class InfraError(Exception):
     """Transport/provider failure: eligible for retry. Never raised for model content."""
 
 
+class ContentFiltered(Exception):
+    """Provider content filter blocked the prompt or the reply. The prompt is dropped for every model."""
+
+
 class QuotaExhausted(Exception):
     """Subscription or daily quota hit: stop the run cleanly, resume later."""
 
@@ -150,6 +156,8 @@ def http_json(url, body, headers, timeout=300):
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         msg = e.read().decode(errors="ignore")[:400]
+        if e.code == 400 and ("content_filter" in msg or "ResponsibleAIPolicyViolation" in msg):
+            raise ContentFiltered(f"prompt: {msg}")
         if e.code in (429, 500, 502, 503, 504, 529):
             raise InfraError(f"HTTP {e.code}: {msg}")
         raise RuntimeError(f"HTTP {e.code}: {msg}")   # 4xx config errors: fail loudly, don't retry
@@ -164,6 +172,8 @@ def call_openai_compatible(url, headers, m, system, prompt, level_cfg):
     t0 = time.time()
     j = http_json(url, body, headers)
     dt = time.time() - t0
+    if j["choices"][0].get("finish_reason") == "content_filter":
+        raise ContentFiltered("reply")
     u = j.get("usage") or {}
     det = u.get("completion_tokens_details") or {}
     return {"text": j["choices"][0]["message"].get("content") or "", "latency_s": dt,
@@ -319,7 +329,7 @@ def cmd_run(a):
             if f.exists():
                 for line in open(f):
                     r = json.loads(line)
-                    if r["status"] == "ok":
+                    if r["status"] in ("ok", "filtered"):
                         done.add((r["prompt_id"], r["sample"]))
             jobs = [(p, s) for p in ps for s in range(samples) if (p["id"], s) not in done]
             print(f"{m['name']} / {cond}: {len(jobs)} calls ({len(done)} done)")
@@ -336,9 +346,13 @@ def cmd_run(a):
                     stop.set()
                     print(f"  quota exhausted for {m['name']}: stopping. Rerun later to resume.\n  {e}")
                     return
+                except ContentFiltered as e:
+                    res, attempts, err = None, 1, f"filtered {e}"
                 rec = {"model": m["name"], "condition": cond, "level": level, "prompt_id": p["id"],
                        "sample": s, "attempts": attempts, "ts": time.time()}
-                if res is None:
+                if err and err.startswith("filtered"):
+                    rec.update(status="filtered", error=err)
+                elif res is None:
                     rec.update(status="infra_failed", error=err)
                 else:
                     budget.add(res.get("cost"))
@@ -362,10 +376,13 @@ def cmd_run(a):
 def cmd_score(a):
     prompts = {p["id"]: p for p in load_prompts(a.data)}
     sheets, n, failed = {}, 0, 0
+    blocked = filtered_prompts(a.out)
     with open(a.scored, "w") as out:
         for f in sorted(Path(a.out).glob("*.jsonl")):
             for line in open(f):
                 r = json.loads(line)
+                if r["prompt_id"] in blocked:
+                    continue
                 if r["status"] != "ok":
                     failed += 1     # infra failures are excluded, never scored as 0 (see README)
                     continue
@@ -386,7 +403,14 @@ def cmd_score(a):
                     "reasoning_tok": r.get("reasoning_tok"), "out_tok": r.get("out_tok"),
                     "cost": r.get("cost") or 0.0, "notional": bool(r.get("cost_is_notional"))}) + "\n")
                 n += 1
-    print(f"Scored {n} answers -> {a.scored}  ({failed} infra failures excluded)")
+    print(f"Scored {n} answers -> {a.scored}  ({failed} infra failures excluded, "
+          f"{len(blocked)} content-filtered prompts dropped for all models)")
+
+
+def filtered_prompts(out_dir):
+    """Prompts a provider content filter blocked for any model: excluded from scoring for every model."""
+    return {r["prompt_id"] for f in Path(out_dir).glob("*.jsonl") for r in map(json.loads, open(f))
+            if r["status"] == "filtered"}
 
 # ------------------------------------------------------------------ report
 
@@ -402,7 +426,11 @@ def cmd_report(a):
     prompts = {p["id"]: p for p in load_prompts(a.data)}
     L = ["# KrillBench results", "",
          "Dive Score = mean points per prompt x 7 (0-700), sample 0, 95% bootstrap CI over prompts.",
-         "Timed = answers over 25 s score 0. Reference: crowd's #1 answer 163, random valid answer 529.", ""]
+         "Timed = answers over 25 s score 0. Reference: crowd's #1 answer 163, random valid answer 529."]
+    blocked = filtered_prompts(a.out)
+    if blocked:
+        L.append(f"Dropped for all models (blocked by a provider content filter): {', '.join(sorted(blocked))}.")
+    L.append("")
     g = {}
     for r in rows:
         g.setdefault((r["model"], r["condition"]), []).append(r)
@@ -453,8 +481,8 @@ def cmd_report(a):
 
     # ---- reasoning sweep
     L += ["", "## Reasoning sweep (rules)", "",
-          "| Model | off | low | medium | high | reasoning tokens (off/low/med/high) | timed (off/low/med/high) |",
-          "|---|---|---|---|---|---|---|"]
+          "| Model | " + " | ".join(LEVELS) + f" | reasoning tokens ({'/'.join(LEVELS)}) | timed ({'/'.join(LEVELS)}) |",
+          "|---|" + "---|" * (len(LEVELS) + 2)]
     for m in sorted({k[0] for k in g}):
         cells, toks, timed = [], [], []
         off = g.get((m, "rules-off"))

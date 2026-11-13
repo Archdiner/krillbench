@@ -32,11 +32,11 @@ Test without any keys: `python3 krillbench.py run --mock --models <file with {"n
 | Condition | Prompt | Reasoning | Samples |
 |---|---|---|---|
 | rules-off (headline) | Game rules + scoring | off | 3 |
-| rules-low / medium / high | Game rules + scoring | low / medium / high | 1 each |
+| rules-minimal / low / medium / high / xhigh | Game rules + scoring | each level the model supports | 1 each |
 | naive-off | "Answer the prompt", no scoring rules | off | 1 |
 | noillirk-off (optional) | "Most common answer" | off | 1 (112 prompts) |
 
-Calls per model: 2,450 (2,562 with Noillirk). Models that can't turn reasoning off run every "off" condition at
+Calls per model: 2,450 (2,562 with Noillirk), more for models with extra levels (minimal, xhigh). Models that can't turn reasoning off run every "off" condition at
 their lowest supported level, marked "(at low)" on the leaderboard; their duplicate rules-low run is skipped. The model is asked for its answer only, nothing else.
 
 **One call = one fresh context.** No conversation history, no tools, no web. Samples are independent
@@ -46,7 +46,8 @@ calls, not retries.
 Claude Code crashes. Up to 4 retries with backoff of 2, 4, 8, 16 s. A call that still fails is logged as
 `infra_failed` and excluded from scoring (rerun to fill it in); it is never scored as 0. Model content is
 never retried: an empty reply, a refusal, a list, a wrong answer all count as the model's one answer.
-HTTP 4xx config errors stop the run. A Claude subscription usage limit stops the run cleanly; rerun later.
+HTTP 4xx config errors stop the run. A prompt blocked by a provider content filter (Azure) is logged as
+`filtered` and dropped from scoring for every model. A Claude subscription usage limit stops the run cleanly; rerun later.
 
 **Answer extraction.** Last non-empty line of the reply; strip "Answer:", quotes, markdown, trailing
 punctuation. Nothing else is repaired.
