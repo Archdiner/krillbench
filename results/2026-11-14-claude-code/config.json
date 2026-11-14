@@ -1,0 +1,74 @@
+[
+ {
+  "name": "claude-opus",
+  "backend": "claude_code",
+  "model": "opus",
+  "workers": 3,
+  "released": "2026-09-22",
+  "levels": {
+   "off": {
+    "MAX_THINKING_TOKENS": 0
+   },
+   "low": {
+    "MAX_THINKING_TOKENS": 2000
+   },
+   "medium": {
+    "MAX_THINKING_TOKENS": 8000
+   },
+   "high": {
+    "MAX_THINKING_TOKENS": 32000
+   }
+  },
+  "extra_args": [
+   "--safe-mode"
+  ]
+ },
+ {
+  "name": "claude-sonnet",
+  "backend": "claude_code",
+  "model": "sonnet",
+  "workers": 3,
+  "released": "2026-09-28",
+  "levels": {
+   "off": {
+    "MAX_THINKING_TOKENS": 0
+   },
+   "low": {
+    "MAX_THINKING_TOKENS": 2000
+   },
+   "medium": {
+    "MAX_THINKING_TOKENS": 8000
+   },
+   "high": {
+    "MAX_THINKING_TOKENS": 32000
+   }
+  },
+  "extra_args": [
+   "--safe-mode"
+  ]
+ },
+ {
+  "name": "claude-haiku",
+  "backend": "claude_code",
+  "model": "haiku",
+  "workers": 3,
+  "released": "2026-10-07",
+  "levels": {
+   "off": {
+    "MAX_THINKING_TOKENS": 0
+   },
+   "low": {
+    "MAX_THINKING_TOKENS": 2000
+   },
+   "medium": {
+    "MAX_THINKING_TOKENS": 8000
+   },
+   "high": {
+    "MAX_THINKING_TOKENS": 32000
+   }
+  },
+  "extra_args": [
+   "--safe-mode"
+  ]
+ }
+]
