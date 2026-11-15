@@ -1,0 +1,88 @@
+claude-opus / rules-off: 1030 calls (20 done)
+  100/1030  spent $2.91
+  200/1030  spent $5.82
+  300/1030  spent $8.80
+  400/1030  spent $11.63
+  500/1030  spent $14.55
+  600/1030  spent $17.52
+  700/1030  spent $20.42
+  800/1030  spent $23.32
+  900/1030  spent $26.25
+  1000/1030  spent $29.11
+skip claude-opus / rules-minimal: model has no 'minimal' level configured
+claude-opus / rules-low: 350 calls (0 done)
+  100/350  spent $32.75
+  200/350  spent $35.55
+  300/350  spent $38.36
+claude-opus / rules-medium: 350 calls (0 done)
+  100/350  spent $42.46
+  200/350  spent $45.24
+  300/350  spent $48.07
+claude-opus / rules-high: 350 calls (0 done)
+  100/350  spent $52.20
+  200/350  spent $54.99
+  300/350  spent $57.77
+skip claude-opus / rules-xhigh: model has no 'xhigh' level configured
+claude-opus / naive-off: 350 calls (0 done)
+  100/350  spent $61.90
+  200/350  spent $64.65
+  300/350  spent $67.40
+claude-sonnet / rules-off: 1030 calls (20 done)
+  100/1030  spent $70.12
+  200/1030  spent $71.48
+  300/1030  spent $72.83
+  400/1030  spent $74.17
+  500/1030  spent $75.53
+  600/1030  spent $76.87
+  700/1030  spent $78.20
+  800/1030  spent $79.55
+  900/1030  spent $80.89
+  1000/1030  spent $82.24
+skip claude-sonnet / rules-minimal: model has no 'minimal' level configured
+claude-sonnet / rules-low: 350 calls (0 done)
+  100/350  spent $83.90
+  200/350  spent $85.17
+  300/350  spent $86.44
+claude-sonnet / rules-medium: 350 calls (0 done)
+  100/350  spent $88.35
+  200/350  spent $89.62
+  300/350  spent $90.87
+claude-sonnet / rules-high: 350 calls (0 done)
+  100/350  spent $92.74
+  200/350  spent $93.97
+  300/350  spent $95.25
+skip claude-sonnet / rules-xhigh: model has no 'xhigh' level configured
+claude-sonnet / naive-off: 350 calls (0 done)
+  100/350  spent $97.23
+  200/350  spent $98.58
+  300/350  spent $100.19
+claude-haiku / rules-off: 1030 calls (20 done)
+  100/1030  spent $100.72
+  200/1030  spent $100.80
+  300/1030  spent $100.88
+  400/1030  spent $100.97
+  500/1030  spent $101.05
+  600/1030  spent $101.13
+  700/1030  spent $101.22
+  800/1030  spent $101.30
+  900/1030  spent $101.38
+  1000/1030  spent $101.47
+skip claude-haiku / rules-minimal: model has no 'minimal' level configured
+claude-haiku / rules-low: 350 calls (0 done)
+  100/350  spent $101.57
+  200/350  spent $101.65
+  300/350  spent $101.73
+claude-haiku / rules-medium: 350 calls (0 done)
+  100/350  spent $101.85
+  200/350  spent $101.93
+  300/350  spent $102.01
+claude-haiku / rules-high: 350 calls (0 done)
+  100/350  spent $102.13
+  200/350  spent $102.21
+  300/350  spent $102.29
+skip claude-haiku / rules-xhigh: model has no 'xhigh' level configured
+claude-haiku / naive-off: 350 calls (0 done)
+  100/350  spent $102.41
+  200/350  spent $102.48
+  300/350  spent $102.55
+Done. Spent $102.59 (Claude Code costs are notional API-equivalent).
